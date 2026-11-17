@@ -14,13 +14,13 @@ __pycache__/
 data/*
 !data/.gitkeep
 # The query set and rubrics are small and cost LLM calls to recreate.
-# To version them, uncomment these lines (order matters: re-include each folder, then the files):
-# !data/asclepius/
-# data/asclepius/*
-# !data/asclepius/general_temporal_queries/
-# data/asclepius/general_temporal_queries/*
-# !data/asclepius/general_temporal_queries/*.jsonl
-# !data/asclepius/general_temporal_queries/*.md
+# Re-include them (order matters: re-include each folder, then the files):
+!data/asclepius/
+data/asclepius/*
+!data/asclepius/general_temporal_queries/
+data/asclepius/general_temporal_queries/*
+!data/asclepius/general_temporal_queries/*.jsonl
+!data/asclepius/general_temporal_queries/*.md
 
 # ---- run outputs --------------------------------------------------------------
 # per-query debug checkpoints from --one runs
