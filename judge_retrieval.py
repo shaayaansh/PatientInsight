@@ -16,6 +16,10 @@ Systems (pass any number with --systems):
     bm25-raw                 BM25 with the raw query as core keywords (no agent)
     dense:<model>            dense search with the raw query, e.g. dense:medembed-base
     results:<results.jsonl>  the top-k the AGENT actually saw in an orchestrator run (its own keywords)
+    hybrid:<results.jsonl>   RRF of BM25 (re-run with the keywords the agent chose in that run, first
+                             search only) and dense (raw query, --dense-model). One system per
+                             combination of --w-dense x --rrf-k x --depth, labelled e.g.
+                             hybrid[w=0.5,k=60,d=100]:<run>. No agent call: it reuses the run's keywords.
 
 POOLING: judgments are cached in evals/relevance_cache.jsonl keyed by (query, patient_id). A pair that
 two systems both retrieve is judged once, and every later run reuses all earlier judgments. That's
@@ -25,11 +29,15 @@ Usage (run from the project root):
     python judge_retrieval.py --systems bm25-raw dense:medembed-base --limit 5      # quick test
     python judge_retrieval.py --systems bm25-raw dense:medembed-base \
         results:results/20261115-212247_gpt-6-luna_baseline/20261115-212247_gpt-6-luna_baseline.jsonl
+    python judge_retrieval.py --systems results:$RUN dense:medembed-base hybrid:$RUN \
+        --w-dense 0.25 0.5 1.0 --rrf-k 20 60 --depth 100
 """
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
+import itertools
 import json
 import math
 import time
@@ -59,17 +67,27 @@ RELEVANCE_SCHEMA = {
 
 
 # =========================================================================== systems -> ranked lists
+@functools.lru_cache(maxsize=None)
+def load_bm25():
+    from bm25_search import BM25Search
+    return BM25Search.load()
+
+
+@functools.lru_cache(maxsize=None)
+def load_dense(model: str):
+    from dense_search import DenseSearch
+    return DenseSearch.load(model)
+
+
 def get_rankings(system: str, queries: List[Dict[str, Any]], k: int) -> Dict[str, List[int]]:
     """Return {query: [top-k patient ids in rank order]} for one system spec."""
     if system == "bm25-raw":
-        from bm25_search import BM25Search
-        bm25 = BM25Search.load()
+        bm25 = load_bm25()
         return {q["query"]: [pid for pid, s in bm25.search([q["query"]], top_k=k) if s > 0]
                 for q in tqdm(queries, desc=system)}
 
     if system.startswith("dense:"):
-        from dense_search import DenseSearch
-        dense = DenseSearch.load(system.split(":", 1)[1])
+        dense = load_dense(system.split(":", 1)[1])
         return {q["query"]: [pid for pid, _ in dense.search(q["query"], top_k=k)]
                 for q in tqdm(queries, desc=system)}
 
@@ -85,7 +103,46 @@ def get_rankings(system: str, queries: List[Dict[str, Any]], k: int) -> Dict[str
             out[q["query"]] = list(dict.fromkeys(ids))[:k]
         return out
 
-    raise ValueError(f"unknown system {system!r} (expected bm25-raw, dense:<model> or results:<path>)")
+    raise ValueError(f"unknown system {system!r} "
+                     f"(expected bm25-raw, dense:<model>, results:<path> or hybrid:<path>)")
+
+
+def hybrid_label(w: float, rk: float, depth: int, run_name: str) -> str:
+    return f"hybrid[w={w:g},k={rk:g},d={depth}]:{run_name}"
+
+
+def get_hybrid_rankings(results_path: Path, queries: List[Dict[str, Any]], k: int, dense_model: str,
+                        settings: List[Tuple[float, float, int]]) -> Dict[str, Dict[str, List[int]]]:
+    """
+    One system per (w_dense, rrf_k, depth) setting. Each query is searched ONCE per retriever (to the
+    largest depth) and then fused under every setting, so trying many settings is nearly free.
+    BM25 re-uses the keywords the agent chose in that run, with the run's aux_weight.
+    """
+    from hybrid_search import HybridSearch
+    config_path = results_path.parent / "config.json"
+    aux_weight = json.load(open(config_path)).get("aux_weight", 0.5) if config_path.exists() else 0.5
+    hs = HybridSearch(load_bm25(), load_dense(dense_model), aux_weight=aux_weight)
+    records = {r["query"]: r for r in read_jsonl(results_path)}
+    run_name = results_path.parent.name
+    max_depth = max(d for _, _, d in settings)
+
+    out: Dict[str, Dict[str, List[int]]] = {hybrid_label(w, rk, d, run_name): {} for w, rk, d in settings}
+    no_search = 0
+    for q in tqdm(queries, desc=f"hybrid:{run_name}"):
+        qq = q["query"]
+        searches = records.get(qq, {}).get("searches") or []
+        if searches:
+            s = searches[0]
+            b = hs.bm25_ranked(s["core_keywords"], s.get("auxiliary_keywords") or [], depth=max_depth)
+        else:                                   # the agent never searched: dense alone decides
+            b, no_search = [], no_search + 1
+        d = hs.dense_ranked(qq, depth=max_depth)
+        for w, rk, dep in settings:
+            fused = hs.fuse(b, d, top_k=k, k=rk, w_dense=w, depth=dep)
+            out[hybrid_label(w, rk, dep, run_name)][qq] = [pid for pid, _ in fused]
+    if no_search:
+        print(f"[judge_retrieval] {no_search} queries had no agent search in {run_name}; hybrid = dense only there")
+    return out
 
 
 def system_label(system: str) -> str:
@@ -176,7 +233,13 @@ def mean(xs: List[float]) -> float:
 def main():
     ap = argparse.ArgumentParser(description="LLM-judged retrieval evaluation")
     ap.add_argument("--systems", nargs="+", required=True,
-                    help="bm25-raw | dense:<model> | results:<results.jsonl>")
+                    help="bm25-raw | dense:<model> | results:<results.jsonl> | hybrid:<results.jsonl>")
+    ap.add_argument("--dense-model", default="medembed-base", help="dense model used by hybrid systems")
+    ap.add_argument("--w-dense", type=float, nargs="+", default=[0.5],
+                    help="hybrid: weight of dense votes (BM25 = 1.0); several values = several systems")
+    ap.add_argument("--rrf-k", type=float, nargs="+", default=[60], help="hybrid: RRF constant(s)")
+    ap.add_argument("--depth", type=int, nargs="+", default=[100],
+                    help="hybrid: how many results of each list take part in fusion")
     ap.add_argument("--queries", type=Path, default=QUERIES_PATH)
     ap.add_argument("--limit", type=int, default=None, help="only the first N queries (for a test)")
     ap.add_argument("-k", type=int, default=20)
@@ -189,8 +252,15 @@ def main():
     queries = read_jsonl(args.queries)[:args.limit]
     gold = {q["query"]: int(q["patient_id"]) for q in queries}
 
-    # 1. ranked lists from every system
-    rankings = {system_label(s): get_rankings(s, queries, args.k) for s in args.systems}
+    # 1. ranked lists from every system (a hybrid spec expands into one system per setting)
+    settings = list(itertools.product(args.w_dense, args.rrf_k, args.depth))
+    rankings: Dict[str, Dict[str, List[int]]] = {}
+    for s in args.systems:
+        if s.startswith("hybrid:"):
+            rankings.update(get_hybrid_rankings(Path(s.split(":", 1)[1]), queries, args.k,
+                                                args.dense_model, settings))
+        else:
+            rankings[system_label(s)] = get_rankings(s, queries, args.k)
 
     # 2. judge the pool: union of every system's top-k (cached pairs are free)
     cache = JsonlCache(CACHE_PATH)
@@ -223,7 +293,10 @@ def main():
     with open(out_dir / "per_query.jsonl", "w") as f:
         for row in per_query:
             f.write(json.dumps(row) + "\n")
-    json.dump({"systems": args.systems, "k": args.k, "n_queries": len(queries), "judge_model": args.model,
+    hybrid_settings = ({"dense_model": args.dense_model, "w_dense": args.w_dense, "rrf_k": args.rrf_k,
+                        "depth": args.depth} if any(s.startswith("hybrid:") for s in args.systems) else None)
+    json.dump({"systems": args.systems, "hybrid_settings": hybrid_settings,
+               "k": args.k, "n_queries": len(queries), "judge_model": args.model,
                "judge_effort": args.effort, "usage_this_run": usage.as_dict(), "summary": summary},
               open(out_dir / "summary.json", "w"), indent=1)
 
