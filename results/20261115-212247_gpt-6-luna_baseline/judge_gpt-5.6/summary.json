@@ -1,0 +1,42 @@
+{
+ "n_queries": 100,
+ "n_graded": 100,
+ "mean_score": 0.591,
+ "mean_raw": 23.65,
+ "gold_cited_rate": 0.35,
+ "fabricated_citation_rate": 0.0,
+ "general_item_hold_rate": {
+  "G1": 0.52,
+  "G2": 0.16,
+  "G3": 0.04,
+  "G4": 0.03,
+  "G5": 0.09,
+  "G6": 0.06,
+  "G7": 0.08,
+  "G8": 0.03,
+  "G9": 0.77,
+  "G10": 0.97
+ },
+ "mean_points_per_category": {
+  "clinical_accuracy": -0.54,
+  "completeness": 13.05,
+  "gold_patient": -0.06,
+  "grounding": 3.69,
+  "missing_info": 3.54,
+  "patient_relevance": 0.32,
+  "patient_separation": -0.32,
+  "scope": 0.24,
+  "temporal_accuracy": 3.51,
+  "temporal_precision": 0.22
+ },
+ "results_file": "results/20261115-212247_gpt-6-luna_baseline/20261115-212247_gpt-6-luna_baseline.jsonl",
+ "judge_model": "gpt-5.6",
+ "judge_effort": "medium",
+ "usage_this_run": {
+  "calls": 97,
+  "input_tokens": 360997,
+  "output_tokens": 182629,
+  "reasoning_tokens": 113508
+ },
+ "failures_this_run": 0
+}
