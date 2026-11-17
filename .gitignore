@@ -1,0 +1,34 @@
+# ---- secrets (never commit) --------------------------------------------------
+openai_secret.txt
+*.env
+.env*
+
+# ---- Python environment & caches ---------------------------------------------
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# ---- data: ignore everything, keep the folder as a placeholder ---------------
+data/*
+!data/.gitkeep
+# The query set and rubrics are small and cost LLM calls to recreate.
+# To version them, uncomment these lines (order matters: re-include each folder, then the files):
+# !data/asclepius/
+# data/asclepius/*
+# !data/asclepius/general_temporal_queries/
+# data/asclepius/general_temporal_queries/*
+# !data/asclepius/general_temporal_queries/*.jsonl
+# !data/asclepius/general_temporal_queries/*.md
+
+# ---- run outputs --------------------------------------------------------------
+# per-query debug checkpoints from --one runs
+runs/
+# full conversations per query (large); each run's results .jsonl and config.json stay tracked
+results/*/traces/
+
+# ---- OS / editor --------------------------------------------------------------
+.DS_Store
+.vscode/
+.idea/
