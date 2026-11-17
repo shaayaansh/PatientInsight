@@ -1,0 +1,55 @@
+{
+ "systems": [
+  "bm25-raw",
+  "dense:medembed-base",
+  "results:results/20261115-212247_gpt-6-luna_baseline/20261115-212247_gpt-6-luna_baseline.jsonl"
+ ],
+ "k": 20,
+ "n_queries": 100,
+ "judge_model": "gpt-5.6",
+ "judge_effort": "low",
+ "usage_this_run": {
+  "calls": 1117,
+  "input_tokens": 996481,
+  "output_tokens": 151258,
+  "reasoning_tokens": 50242
+ },
+ "summary": {
+  "bm25-raw": {
+   "P@5": 0.602,
+   "P@10": 0.567,
+   "P@20": 0.5475,
+   "nDCG@20": 0.6178,
+   "pooled_recall@20": 0.3843,
+   "gold_recall@1": 0.24,
+   "gold_recall@5": 0.37,
+   "gold_recall@20": 0.54,
+   "any_relevant@20": 1.0,
+   "n_relevant": 10.95
+  },
+  "dense:medembed-base": {
+   "P@5": 0.71,
+   "P@10": 0.681,
+   "P@20": 0.6465,
+   "nDCG@20": 0.7005,
+   "pooled_recall@20": 0.4211,
+   "gold_recall@1": 0.07,
+   "gold_recall@5": 0.12,
+   "gold_recall@20": 0.32,
+   "any_relevant@20": 0.99,
+   "n_relevant": 12.93
+  },
+  "agent:20261115-212247_gpt-6-luna_baseline": {
+   "P@5": 0.8,
+   "P@10": 0.785,
+   "P@20": 0.7485,
+   "nDCG@20": 0.8046,
+   "pooled_recall@20": 0.513,
+   "gold_recall@1": 0.1,
+   "gold_recall@5": 0.24,
+   "gold_recall@20": 0.41,
+   "any_relevant@20": 1.0,
+   "n_relevant": 14.97
+  }
+ }
+}
