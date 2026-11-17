@@ -1,0 +1,155 @@
+{
+ "systems": [
+  "results:results/20261115-212247_gpt-6-luna_baseline/20261115-212247_gpt-6-luna_baseline.jsonl",
+  "dense:medembed-base",
+  "hybrid:results/20261115-212247_gpt-6-luna_baseline/20261115-212247_gpt-6-luna_baseline.jsonl"
+ ],
+ "hybrid_settings": {
+  "dense_model": "medembed-base",
+  "w_dense": [
+   0.0,
+   0.25,
+   0.5,
+   1.0
+  ],
+  "rrf_k": [
+   20.0,
+   60.0
+  ],
+  "depth": [
+   100
+  ]
+ },
+ "k": 20,
+ "n_queries": 100,
+ "judge_model": "gpt-5.6",
+ "judge_effort": "low",
+ "usage_this_run": {
+  "calls": 410,
+  "input_tokens": 375365,
+  "output_tokens": 53924,
+  "reasoning_tokens": 16177
+ },
+ "summary": {
+  "agent:20261115-212247_gpt-6-luna_baseline": {
+   "P@5": 0.8,
+   "P@10": 0.785,
+   "P@20": 0.7485,
+   "nDCG@20": 0.8094,
+   "pooled_recall@20": 0.5534,
+   "gold_recall@1": 0.1,
+   "gold_recall@5": 0.24,
+   "gold_recall@20": 0.41,
+   "any_relevant@20": 1.0,
+   "n_relevant": 14.97
+  },
+  "dense:medembed-base": {
+   "P@5": 0.71,
+   "P@10": 0.681,
+   "P@20": 0.6465,
+   "nDCG@20": 0.7021,
+   "pooled_recall@20": 0.4529,
+   "gold_recall@1": 0.07,
+   "gold_recall@5": 0.12,
+   "gold_recall@20": 0.32,
+   "any_relevant@20": 0.99,
+   "n_relevant": 12.93
+  },
+  "hybrid[w=0,k=20,d=100]:20261115-212247_gpt-6-luna_baseline": {
+   "P@5": 0.8,
+   "P@10": 0.785,
+   "P@20": 0.7485,
+   "nDCG@20": 0.8094,
+   "pooled_recall@20": 0.5534,
+   "gold_recall@1": 0.1,
+   "gold_recall@5": 0.24,
+   "gold_recall@20": 0.41,
+   "any_relevant@20": 1.0,
+   "n_relevant": 14.97
+  },
+  "hybrid[w=0,k=60,d=100]:20261115-212247_gpt-6-luna_baseline": {
+   "P@5": 0.8,
+   "P@10": 0.785,
+   "P@20": 0.7485,
+   "nDCG@20": 0.8094,
+   "pooled_recall@20": 0.5534,
+   "gold_recall@1": 0.1,
+   "gold_recall@5": 0.24,
+   "gold_recall@20": 0.41,
+   "any_relevant@20": 1.0,
+   "n_relevant": 14.97
+  },
+  "hybrid[w=0.25,k=20,d=100]:20261115-212247_gpt-6-luna_baseline": {
+   "P@5": 0.814,
+   "P@10": 0.791,
+   "P@20": 0.7575,
+   "nDCG@20": 0.8247,
+   "pooled_recall@20": 0.5623,
+   "gold_recall@1": 0.07,
+   "gold_recall@5": 0.25,
+   "gold_recall@20": 0.46,
+   "any_relevant@20": 1.0,
+   "n_relevant": 15.15
+  },
+  "hybrid[w=0.25,k=60,d=100]:20261115-212247_gpt-6-luna_baseline": {
+   "P@5": 0.83,
+   "P@10": 0.801,
+   "P@20": 0.764,
+   "nDCG@20": 0.8346,
+   "pooled_recall@20": 0.5716,
+   "gold_recall@1": 0.08,
+   "gold_recall@5": 0.26,
+   "gold_recall@20": 0.48,
+   "any_relevant@20": 1.0,
+   "n_relevant": 15.28
+  },
+  "hybrid[w=0.5,k=20,d=100]:20261115-212247_gpt-6-luna_baseline": {
+   "P@5": 0.838,
+   "P@10": 0.799,
+   "P@20": 0.764,
+   "nDCG@20": 0.8341,
+   "pooled_recall@20": 0.5721,
+   "gold_recall@1": 0.08,
+   "gold_recall@5": 0.28,
+   "gold_recall@20": 0.49,
+   "any_relevant@20": 1.0,
+   "n_relevant": 15.28
+  },
+  "hybrid[w=0.5,k=60,d=100]:20261115-212247_gpt-6-luna_baseline": {
+   "P@5": 0.836,
+   "P@10": 0.8,
+   "P@20": 0.775,
+   "nDCG@20": 0.8455,
+   "pooled_recall@20": 0.583,
+   "gold_recall@1": 0.07,
+   "gold_recall@5": 0.23,
+   "gold_recall@20": 0.51,
+   "any_relevant@20": 1.0,
+   "n_relevant": 15.5
+  },
+  "hybrid[w=1,k=20,d=100]:20261115-212247_gpt-6-luna_baseline": {
+   "P@5": 0.834,
+   "P@10": 0.787,
+   "P@20": 0.751,
+   "nDCG@20": 0.8258,
+   "pooled_recall@20": 0.5654,
+   "gold_recall@1": 0.07,
+   "gold_recall@5": 0.23,
+   "gold_recall@20": 0.52,
+   "any_relevant@20": 1.0,
+   "n_relevant": 15.02
+  },
+  "hybrid[w=1,k=60,d=100]:20261115-212247_gpt-6-luna_baseline": {
+   "P@5": 0.83,
+   "P@10": 0.803,
+   "P@20": 0.7525,
+   "nDCG@20": 0.8255,
+   "pooled_recall@20": 0.5581,
+   "gold_recall@1": 0.07,
+   "gold_recall@5": 0.21,
+   "gold_recall@20": 0.5,
+   "any_relevant@20": 1.0,
+   "n_relevant": 15.05
+  }
+ }
+}
