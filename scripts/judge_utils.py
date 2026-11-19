@@ -19,7 +19,7 @@ from typing import Any, Dict, Iterable, List, Optional, Set
 import openai
 from openai import OpenAI
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]      # repo root (this file lives in scripts/)
 PROMPTS_DIR = ROOT / "prompts"
 DATA_PATH = ROOT / "data/asclepius/asclepius.parquet"
 QUERY_DIR = ROOT / "data/asclepius/general_temporal_queries"

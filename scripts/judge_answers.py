@@ -22,17 +22,22 @@ Outputs go next to the run being judged, so results and grades stay together:
 Resumable: queries already in judgments.jsonl are skipped. Re-run the same command after a crash.
 
 Usage (run from the project root):
-    python judge_answers.py results/<run>/<run>.jsonl --limit 3      # quick test, look at the justifications
-    python judge_answers.py results/<run>/<run>.jsonl
+    python scripts/judge_answers.py results/<run>/<run>.jsonl --limit 3      # quick test, look at the justifications
+    python scripts/judge_answers.py results/<run>/<run>.jsonl
 """
 from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]          # repo root (this file lives in scripts/)
+sys.path.insert(0, str(ROOT))                       # so the root modules (bm25_search, ...) import from here
 
 import argparse
 import json
 import threading
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from tqdm import tqdm

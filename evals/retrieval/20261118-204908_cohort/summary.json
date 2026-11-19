@@ -1,0 +1,77 @@
+{
+ "systems": [
+  "results:results/20261118-203035_gpt-6-luna_cohort-hybrid/20261118-203035_gpt-6-luna_cohort-hybrid.jsonl",
+  "results:results/20261118-203448_gpt-6-luna_cohort-hybrid-verified/20261118-203448_gpt-6-luna_cohort-hybrid-verified.jsonl",
+  "shown:results/20261118-203448_gpt-6-luna_cohort-hybrid-verified/20261118-203448_gpt-6-luna_cohort-hybrid-verified.jsonl"
+ ],
+ "hybrid_settings": null,
+ "relevance_prompt": "judge_relevance_cohort.md",
+ "queries_file": "data/asclepius/cohort_queries/cohort_queries.jsonl",
+ "verifier_agreement": {
+  "20261118-203448_gpt-6-luna_cohort-hybrid-verified": {
+   "n_screened": 400,
+   "kept": 390,
+   "dropped": 10,
+   "kept_precision": 0.941,
+   "kept_recall": 0.9946,
+   "drop_precision": 0.8,
+   "accuracy": 0.9375,
+   "judge_relevant_rate_by_verifier_label": {
+    "relevant": 0.968,
+    "not_relevant": 0.2,
+    "uncertain": 0.083
+   }
+  }
+ },
+ "k": 20,
+ "n_queries": 20,
+ "judge_model": "gpt-5.6",
+ "judge_effort": "low",
+ "usage_this_run": {
+  "calls": 520,
+  "input_tokens": 389076,
+  "output_tokens": 32337,
+  "reasoning_tokens": 2984
+ },
+ "summary": {
+  "agent:20261118-203035_gpt-6-luna_cohort-hybrid": {
+   "P@5": 0.96,
+   "P@10": 0.955,
+   "P@20": 0.915,
+   "nDCG@20": 0.9357,
+   "pooled_recall@20": 0.779,
+   "gold_recall@1": null,
+   "gold_recall@5": null,
+   "gold_recall@20": null,
+   "any_relevant@20": 1.0,
+   "prec_all": 0.915,
+   "n_relevant": 18.3
+  },
+  "agent:20261118-203448_gpt-6-luna_cohort-hybrid-verified": {
+   "P@5": 0.97,
+   "P@10": 0.94,
+   "P@20": 0.9225,
+   "nDCG@20": 0.939,
+   "pooled_recall@20": 0.7851,
+   "gold_recall@1": null,
+   "gold_recall@5": null,
+   "gold_recall@20": null,
+   "any_relevant@20": 1.0,
+   "prec_all": 0.9225,
+   "n_relevant": 18.45
+  },
+  "shown:20261118-203448_gpt-6-luna_cohort-hybrid-verified": {
+   "P@5": 0.97,
+   "P@10": 0.95,
+   "P@20": 0.9175,
+   "nDCG@20": 0.938,
+   "pooled_recall@20": 0.7806,
+   "gold_recall@1": null,
+   "gold_recall@5": null,
+   "gold_recall@20": null,
+   "any_relevant@20": 1.0,
+   "prec_all": 0.9413,
+   "n_relevant": 18.35
+  }
+ }
+}

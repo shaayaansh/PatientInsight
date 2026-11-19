@@ -92,8 +92,8 @@ python orchestrator.py --verify --tag hybrid-verified
 python orchestrator.py --queries data/asclepius/cohort_queries/cohort_queries.jsonl
 
 # evaluation
-python judge_answers.py results/<run>/<run>.jsonl
-python judge_retrieval.py --systems results:<run.jsonl> dense:medembed-base hybrid:<run.jsonl>
+python scripts/judge_answers.py results/<run>/<run>.jsonl
+python scripts/judge_retrieval.py --systems results:<run.jsonl> dense:medembed-base hybrid:<run.jsonl>
 
 # tests (fake models, no API calls)
 python test_orchestrator.py
