@@ -257,7 +257,7 @@ def _result_record(item: Dict[str, Any], state: RunState) -> Dict[str, Any]:
     """One line of the results file: the query, the model's answer, and the top-k patients shown."""
     return {
         "query": item["query"],
-        "gold_patient_id": item["patient_id"],
+        "gold_patient_id": item.get("patient_id"),      # None for query sets without a gold patient (cohorts)
         "answer": state.answer,
         "top_k_patient_ids": [pid for s in state.searches for pid in s.top_k_ids],   # retrieved, in rank order
         "shown_patient_ids": [pid for s in state.searches for pid in s.shown_ids],   # what the agent read
@@ -287,8 +287,10 @@ def run_one_verbose(orch: Orchestrator, item: Dict[str, Any]) -> None:
             print(f"          verifier kept {len(s.shown_ids)}/{len(s.verdicts)}:")
             for v in s.verdicts:
                 print(f"            {'KEEP' if v['kept'] else 'drop'} {v['patient_id']:<7} {v['label']:<12} {v['reason'][:110]}")
-        gold_rank = next((r for r, (p, _) in enumerate(s.ranked, 1) if p == item["patient_id"]), None)
-        print(f"          gold patient {item['patient_id']} rank = {gold_rank}  (in top-{TOP_K}: {item['patient_id'] in s.top_k_ids})")
+        gold = item.get("patient_id")
+        if gold is not None:
+            gold_rank = next((r for r, (p, _) in enumerate(s.ranked, 1) if p == gold), None)
+            print(f"          gold patient {gold} rank = {gold_rank}  (in top-{TOP_K}: {gold in s.top_k_ids})")
     print(f"LLM calls: {state.n_llm_calls} | tokens in={state.input_tokens:,} out={state.output_tokens:,} "
           f"(reasoning={state.reasoning_tokens:,})")
     if state.verifier_calls:
