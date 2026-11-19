@@ -21,6 +21,7 @@ data/asclepius/*
 data/asclepius/general_temporal_queries/*
 !data/asclepius/general_temporal_queries/*.jsonl
 !data/asclepius/general_temporal_queries/*.md
+!data/asclepius/cohort_queries/
 
 # ---- run outputs --------------------------------------------------------------
 # per-query debug checkpoints from --one runs
