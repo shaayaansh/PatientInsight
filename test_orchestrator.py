@@ -52,8 +52,9 @@ class FakeModel:
         return [it.get("type") or it.get("role") for it in self.requests[i]["input"]]
 
 
-def _orch():
-    return O.Orchestrator(agent.Agent(), _orch.registry, max_steps=O.MAX_STEPS, checkpoint_dir=None, verbose=False)
+def _orch(registry=None):
+    return O.Orchestrator(agent.Agent(), registry or _orch.registry, max_steps=O.MAX_STEPS,
+                          checkpoint_dir=None, verbose=False)
 
 
 def outputs(state):
@@ -123,9 +124,82 @@ def test_checkpoint_written():
         assert saved["status"] == "answered" and saved["answer"] == s.answer
 
 
+# ------------------------------------------------------------------ hybrid search + verifier (all fake, no index)
+from tools import ToolRegistry, make_search_tool
+from verifier import Verifier, VerifierConfig
+
+GOOD_H = json.dumps({"core_keywords": ["DKA"], "auxiliary_keywords": ["insulin drip"],
+                     "query": "Diabetic ketoacidosis treated with an insulin infusion"})
+
+
+class FakeSearcher:
+    """Stands in for HybridSearch: always returns patients 1, 2, 3."""
+    def search(self, core, aux, query, top_k=None):
+        return [(1, 0.03), (2, 0.02), (3, 0.01)]
+
+    def get_note(self, pid):
+        return f"Note text of patient {pid}."
+
+
+class FakeVerifierClient:
+    """Responses API stand-in: patient 1 relevant, 2 not relevant, 3 the call fails."""
+    def __init__(self):
+        self.responses = NS(create=self.create)
+
+    def create(self, **kw):
+        if 'patient_id="3"' in kw["input"]:
+            raise RuntimeError("verifier model down")
+        label = "relevant" if 'patient_id="1"' in kw["input"] else "not_relevant"
+        out = json.dumps({"reason": f"reason for {label}", "label": label})
+        return NS(output_text=out, usage=NS(input_tokens=10, output_tokens=5,
+                                            output_tokens_details=NS(reasoning_tokens=2)))
+
+
+def _hybrid_registry(verify=False, on_error="keep"):
+    v = Verifier(VerifierConfig(on_error=on_error), client=FakeVerifierClient()) if verify else None
+    r = ToolRegistry()
+    r.register(make_search_tool(FakeSearcher(), "hybrid", top_k=20, max_calls=1, verifier=v))
+    return r
+
+
+def test_hybrid_requires_query():
+    agent.client = FakeModel([resp(fc("c1", json.dumps({"core_keywords": ["DKA"], "auxiliary_keywords": [],
+                                                        "query": "  "}), name="search")),
+                              resp(msg("ans"), text="ans")])
+    s = _orch(_hybrid_registry()).run(Q)
+    assert "query" in outputs(s)[0]["output"] and len(s.searches) == 0
+
+def test_hybrid_unverified_shows_all():
+    agent.client = FakeModel([resp(fc("c1", GOOD_H, name="search")), resp(msg("ans"), text="ans")])
+    s = _orch(_hybrid_registry()).run(Q)
+    assert s.tool_calls == {"search": 1} and s.searches[0].shown_ids == [1, 2, 3]
+    assert s.searches[0].query.startswith("Diabetic") and s.verifier_calls == 0
+    assert "screening" not in outputs(s)[0]["output"]
+
+def test_verifier_filters_and_explains():
+    agent.client = FakeModel([resp(fc("c1", GOOD_H, name="search")),
+                              resp(msg("A [patient 1] B [patient 2]"), text="A [patient 1] B [patient 2]")])
+    s = _orch(_hybrid_registry(verify=True)).run(Q)
+    out = outputs(s)[0]["output"]
+    assert s.searches[0].shown_ids == [1, 3], s.searches[0].shown_ids      # 2 dropped; 3 failed -> kept
+    assert 'patient_id="2"' not in out, "a dropped note must not reach the agent"
+    assert 'screening="relevant"' in out and "reason for relevant" in out, "the reason travels with the note"
+    assert 'screening="error"' in out
+    assert "2 passed relevance screening" in out
+    assert s.verifier_calls == 2 and s.verifier_errors == 1 and s.verifier_input_tokens == 20
+    assert s.input_tokens == 200, "verifier tokens must NOT be added to the main agent's tokens"
+    assert agent.check_grounding(s)["hallucinated"] == [2], "citing a dropped patient counts as not shown"
+    assert any(e.kind == "verify" for e in s.events)
+
+def test_verifier_on_error_drop():
+    agent.client = FakeModel([resp(fc("c1", GOOD_H, name="search")), resp(msg("ans"), text="ans")])
+    s = _orch(_hybrid_registry(verify=True, on_error="drop")).run(Q)
+    assert s.searches[0].shown_ids == [1]
+
+
 if __name__ == "__main__":
     print("loading BM25 index ...")
-    _orch.registry = O.build().registry
+    _orch.registry = O.build(search="bm25").registry
     tests = [v for k, v in dict(globals()).items() if k.startswith("test_")]
     passed = 0
     for t in tests:

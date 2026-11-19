@@ -17,6 +17,8 @@ Main methods:
     run()         the control loop with status transitions
 
 Run:    python orchestrator.py                       all queries in QUERIES_PATH -> results/<run_name>/
+        python orchestrator.py --search bm25 --tag bm25        keyword-only baseline (default: hybrid)
+        python orchestrator.py --verify --tag hybrid-verified  screen notes with the verifier first
         python orchestrator.py --limit 5 --tag trial  quick trial on the first 5 queries
         python orchestrator.py --resume results/<run_name>   continue an interrupted run
         python orchestrator.py --one 0               debug: one query, print everything
@@ -32,12 +34,16 @@ from typing import Any, Dict, Optional
 from agent import AUX_WEIGHT, TOP_K, Agent, check_grounding
 from bm25_search import BM25Search
 from state import RunState, RunStatus
-from tools import ToolRegistry, make_bm25_tool
+from tools import ToolRegistry, make_search_tool
 
 MAX_STEPS = 4                      # max LLM calls per run (before the forced final answer)
 CHECKPOINT_DIR = Path("runs")
 RESULTS_DIR = Path("results")
 QUERIES_PATH = Path("data/asclepius/general_temporal_queries/temporal_information_queries_top100.jsonl")
+
+# hybrid search defaults: the best setting in the retrieval judge (evals/retrieval/20261117-141957_hybrid)
+DENSE_MODEL, W_DENSE, RRF_K, DEPTH = "medembed-base", 0.5, 60, 100
+SYSTEM_PROMPTS = {"bm25": "system.md", "hybrid": "system_hybrid.md"}
 
 
 class Orchestrator:
@@ -45,6 +51,8 @@ class Orchestrator:
                  checkpoint_dir: Optional[Path] = CHECKPOINT_DIR, verbose: bool = True):
         self.agent, self.registry = agent, registry
         self.max_steps, self.checkpoint_dir, self.verbose = max_steps, checkpoint_dir, verbose
+        self.search_config: Optional[Dict[str, Any]] = None    # set by build(); recorded in config.json
+        self.verifier = None                                    # set by build() when --verify
 
     # ------------------------------------------------------------------ helpers
     def _log(self, *a):
@@ -177,11 +185,34 @@ class Orchestrator:
 
 
 # =========================================================================== main
-def build(top_k: int = TOP_K, max_searches: int = 1) -> Orchestrator:
-    bm25 = BM25Search.load_or_build()
+def build(top_k: int = TOP_K, max_searches: int = 1, search: str = "hybrid", verify: bool = False,
+          verifier_config=None, dense_model: str = DENSE_MODEL, w_dense: float = W_DENSE,
+          rrf_k: float = RRF_K, depth: int = DEPTH) -> Orchestrator:
+    """
+    search   "hybrid" (BM25 keywords + dense query, fused with RRF) or "bm25" (keywords only)
+    verify   screen the retrieved notes with a Verifier before the agent reads them
+    """
+    if search == "hybrid":
+        from hybrid_search import HybridSearch
+        searcher = HybridSearch.load(dense_model, k=rrf_k, w_dense=w_dense, depth=depth, aux_weight=AUX_WEIGHT)
+    elif search == "bm25":
+        searcher = BM25Search.load_or_build()
+    else:
+        raise ValueError(f"unknown search backend {search!r}")
+    verifier = None
+    if verify:
+        from verifier import Verifier, VerifierConfig
+        verifier = Verifier(verifier_config or VerifierConfig())
     registry = ToolRegistry()
-    registry.register(make_bm25_tool(bm25, top_k=top_k, aux_weight=AUX_WEIGHT, max_calls=max_searches))
-    return Orchestrator(Agent(), registry)
+    registry.register(make_search_tool(searcher, search, top_k=top_k, aux_weight=AUX_WEIGHT,
+                                       max_calls=max_searches, verifier=verifier))
+    orch = Orchestrator(Agent(system_prompt_file=SYSTEM_PROMPTS[search]), registry)
+    orch.search_config = {"backend": search, "dense_model": dense_model if search == "hybrid" else None,
+                          "w_dense": w_dense if search == "hybrid" else None,
+                          "rrf_k": rrf_k if search == "hybrid" else None,
+                          "depth": depth if search == "hybrid" else None}
+    orch.verifier = verifier
+    return orch
 
 
 def _git_commit() -> Optional[str]:
@@ -210,11 +241,14 @@ def _run_config(args, orch: Orchestrator, queries_path: Path, n_queries: int) ->
         "aux_weight": AUX_WEIGHT,
         "max_steps": orch.max_steps,
         "max_searches": args.max_searches,
+        "search": orch.search_config,
+        "verifier": orch.verifier.describe() if orch.verifier else None,
+        "verifier_prompt": orch.verifier.instructions if orch.verifier else None,
         "queries_file": str(queries_path),
         "n_queries": n_queries,
-        "system_prompt_file": A.SYSTEM_PROMPT_FILE,
-        "system_prompt_sha256": hashlib.sha256(A.SYSTEM_PROMPT.encode()).hexdigest()[:12],
-        "system_prompt": A.SYSTEM_PROMPT,          # full text, so you can diff prompts between runs
+        "system_prompt_file": orch.agent.system_prompt_file,
+        "system_prompt_sha256": hashlib.sha256(orch.agent.system_prompt.encode()).hexdigest()[:12],
+        "system_prompt": orch.agent.system_prompt,  # full text, so you can diff prompts between runs
         "user_prompt_template": A.USER_PROMPT_TEMPLATE,
     }
 
@@ -225,16 +259,16 @@ def _result_record(item: Dict[str, Any], state: RunState) -> Dict[str, Any]:
         "query": item["query"],
         "gold_patient_id": item["patient_id"],
         "answer": state.answer,
-        "top_k_patient_ids": [pid for s in state.searches for pid in s.top_k_ids],   # in rank order
-        "searches": [{"core_keywords": s.core_keywords, "auxiliary_keywords": s.auxiliary_keywords}
+        "top_k_patient_ids": [pid for s in state.searches for pid in s.top_k_ids],   # retrieved, in rank order
+        "shown_patient_ids": [pid for s in state.searches for pid in s.shown_ids],   # what the agent read
+        "searches": [{"core_keywords": s.core_keywords, "auxiliary_keywords": s.auxiliary_keywords,
+                      "query": s.query, "backend": s.backend, "n_shown": len(s.shown_ids),
+                      "verdicts": s.verdicts}
                      for s in state.searches],
         "status": state.status.value,
         "error": state.error,
         "run_id": state.run_id,                   # -> traces/<run_id>.json has the full conversation
-        "n_llm_calls": state.n_llm_calls,
-        "input_tokens": state.input_tokens,
-        "output_tokens": state.output_tokens,
-        "reasoning_tokens": state.reasoning_tokens,
+        **state.usage_dict(),                    # main agent AND verifier tokens, kept separate
         "seconds": round((state.finished_at or time.time()) - state.started_at, 1),
     }
 
@@ -247,10 +281,19 @@ def run_one_verbose(orch: Orchestrator, item: Dict[str, Any]) -> None:
     print("QUERY:  ", item["query"])
     for i, s in enumerate(state.searches, 1):
         print(f"SEARCH {i}: core={s.core_keywords}\n          aux={s.auxiliary_keywords}")
+        if s.query:
+            print(f"          query={s.query!r}")
+        if s.verdicts is not None:
+            print(f"          verifier kept {len(s.shown_ids)}/{len(s.verdicts)}:")
+            for v in s.verdicts:
+                print(f"            {'KEEP' if v['kept'] else 'drop'} {v['patient_id']:<7} {v['label']:<12} {v['reason'][:110]}")
         gold_rank = next((r for r, (p, _) in enumerate(s.ranked, 1) if p == item["patient_id"]), None)
         print(f"          gold patient {item['patient_id']} rank = {gold_rank}  (in top-{TOP_K}: {item['patient_id'] in s.top_k_ids})")
     print(f"LLM calls: {state.n_llm_calls} | tokens in={state.input_tokens:,} out={state.output_tokens:,} "
           f"(reasoning={state.reasoning_tokens:,})")
+    if state.verifier_calls:
+        print(f"Verifier: {state.verifier_calls} calls | tokens in={state.verifier_input_tokens:,} "
+              f"out={state.verifier_output_tokens:,} | errors={state.verifier_errors} | {state.verifier_seconds:.1f}s")
     print("EVENTS:", [e.kind for e in state.events])
     print("\nANSWER:\n", state.answer)
     print("\nGROUNDING:", check_grounding(state))
@@ -265,6 +308,16 @@ if __name__ == "__main__":
     ap.add_argument("--limit", type=int, default=None, help="only the first N queries (for a quick trial)")
     ap.add_argument("--tag", default="", help="short label for this run, e.g. 'baseline' or 'aux-weight-0.3'")
     ap.add_argument("--max-searches", type=int, default=1)
+    ap.add_argument("--search", choices=["hybrid", "bm25"], default="hybrid", help="search backend")
+    ap.add_argument("--dense-model", default=DENSE_MODEL)
+    ap.add_argument("--w-dense", type=float, default=W_DENSE, help="hybrid: weight of dense votes (BM25 = 1.0)")
+    ap.add_argument("--rrf-k", type=float, default=RRF_K)
+    ap.add_argument("--depth", type=int, default=DEPTH)
+    ap.add_argument("--verify", action="store_true", help="screen retrieved notes with the verifier")
+    ap.add_argument("--verifier-model", default="gpt-5.4-nano")
+    ap.add_argument("--verifier-effort", default="low", help="reasoning effort, or 'none' to omit it")
+    ap.add_argument("--verifier-base-url", default=None, help="OpenAI-compatible server, e.g. a local vLLM")
+    ap.add_argument("--verifier-api", choices=["responses", "chat"], default="responses")
     ap.add_argument("--resume", type=Path, default=None,
                     help="an existing results/<run_name> folder: skip queries already done and append")
     ap.add_argument("--one", type=int, default=None, help="debug: run only query #N and print everything")
@@ -273,7 +326,16 @@ if __name__ == "__main__":
     queries = [json.loads(l) for l in open(args.queries) if l.strip()]
     if args.limit:
         queries = queries[:args.limit]
-    orch = build(max_searches=args.max_searches)
+    vcfg = None
+    if args.verify:
+        from verifier import VerifierConfig
+        vcfg = VerifierConfig(model=args.verifier_model, base_url=args.verifier_base_url, api=args.verifier_api,
+                              reasoning_effort=None if args.verifier_effort == "none" else args.verifier_effort)
+    orch = build(max_searches=args.max_searches, search=args.search, verify=args.verify, verifier_config=vcfg,
+                 dense_model=args.dense_model, w_dense=args.w_dense, rrf_k=args.rrf_k, depth=args.depth)
+
+    if not args.tag:                                           # e.g. "hybrid" or "hybrid-verified"
+        args.tag = args.search + ("-verified" if args.verify else "")
 
     if args.one is not None:                                   # debug mode
         orch.checkpoint_dir = CHECKPOINT_DIR

@@ -54,6 +54,13 @@ class RunState:
     input_tokens: int = 0
     output_tokens: int = 0                                # includes reasoning tokens
     reasoning_tokens: int = 0
+    # the verifier's cost, kept SEPARATE from the main agent's (so verified runs are never under-reported)
+    verifier_calls: int = 0
+    verifier_input_tokens: int = 0
+    verifier_output_tokens: int = 0
+    verifier_reasoning_tokens: int = 0
+    verifier_errors: int = 0
+    verifier_seconds: float = 0.0
     started_at: float = field(default_factory=time.time)
     finished_at: Optional[float] = None
 
@@ -64,8 +71,8 @@ class RunState:
 
     @property
     def searches(self) -> List[Any]:
-        """BM25 SearchCall artifacts (kept under this name so check_grounding works unchanged)."""
-        return self.artifacts.get("bm25_search", [])
+        """SearchCall artifacts from whichever search tool ran (bm25_search or the hybrid `search`)."""
+        return [a for name in ("bm25_search", "search") for a in self.artifacts.get(name, [])]
 
     def log(self, kind: str, **data) -> None:
         self.events.append(Event(self.step, kind, data))
@@ -80,6 +87,26 @@ class RunState:
         self.output_tokens += u.output_tokens or 0
         details = getattr(u, "output_tokens_details", None)
         self.reasoning_tokens += (getattr(details, "reasoning_tokens", 0) or 0) if details else 0
+
+    def add_verifier_usage(self, usage) -> None:
+        """Add one verification pass (a VerifierUsage) to the verifier totals."""
+        self.verifier_calls += usage.calls
+        self.verifier_input_tokens += usage.input_tokens
+        self.verifier_output_tokens += usage.output_tokens
+        self.verifier_reasoning_tokens += usage.reasoning_tokens
+        self.verifier_errors += usage.errors
+        self.verifier_seconds += usage.seconds
+
+    def usage_dict(self) -> Dict[str, Any]:
+        """Token usage of the main agent and the verifier, side by side."""
+        return {
+            "n_llm_calls": self.n_llm_calls, "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens, "reasoning_tokens": self.reasoning_tokens,
+            "verifier_calls": self.verifier_calls, "verifier_input_tokens": self.verifier_input_tokens,
+            "verifier_output_tokens": self.verifier_output_tokens,
+            "verifier_reasoning_tokens": self.verifier_reasoning_tokens,
+            "verifier_errors": self.verifier_errors, "verifier_seconds": round(self.verifier_seconds, 2),
+        }
 
     # ------------------------------------------------------------------ persistence
     def to_dict(self, max_ranked: int = 1000) -> Dict[str, Any]:
@@ -98,8 +125,7 @@ class RunState:
             "artifacts": {k: [artifact_to_dict(a) for a in v] for k, v in self.artifacts.items()},
             "tool_calls": self.tool_calls,
             "events": [dataclasses.asdict(e) for e in self.events],
-            "n_llm_calls": self.n_llm_calls, "input_tokens": self.input_tokens,
-            "output_tokens": self.output_tokens, "reasoning_tokens": self.reasoning_tokens,
+            **self.usage_dict(),
             "started_at": self.started_at, "finished_at": self.finished_at,
         }
 

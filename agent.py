@@ -71,10 +71,12 @@ class AgentStep:
 
 class Agent:
     def __init__(self, model: str = MODEL, reasoning_effort: str = REASONING_EFFORT,
-                 reasoning_summary: str = REASONING_SUMMARY):
+                 reasoning_summary: str = REASONING_SUMMARY, system_prompt_file: str = SYSTEM_PROMPT_FILE):
         self.model = model
         self.reasoning_effort = reasoning_effort
         self.reasoning_summary = reasoning_summary
+        self.system_prompt_file = system_prompt_file        # e.g. system.md (BM25) or system_hybrid.md
+        self.system_prompt = load_prompt(system_prompt_file, top_k=TOP_K)
 
     def initial_items(self, query: str) -> List[Dict[str, Any]]:
         """The conversation at the start of a run (the system prompt goes in `instructions`)."""
@@ -83,7 +85,7 @@ class Agent:
     def step(self, state: RunState, tools: List[Dict[str, Any]], allow_tools: bool) -> AgentStep:
         """One LLM call on the current conversation. Reads state, never changes it.
         allow_tools=False -> tool_choice="none": the model sees the tools but must answer."""
-        kwargs: Dict[str, Any] = {"model": self.model, "instructions": SYSTEM_PROMPT,
+        kwargs: Dict[str, Any] = {"model": self.model, "instructions": self.system_prompt,
                                   "input": state.items}
         if tools:
             kwargs["tools"] = tools
@@ -110,11 +112,14 @@ NUMBER_RE = re.compile(r"\d+")
 
 
 def _shown_ids(result) -> List[int]:
-    """Patients whose note text was actually in the context (zero-score notes are not shown)."""
+    """Patients whose note text was actually in the context (after the zero-score filter and verification)."""
     shown: List[int] = []
     for s in result.searches:
-        scores = dict(s.ranked[:len(s.top_k_ids)])
-        shown += [p for p in s.top_k_ids if scores.get(p, 0) > 0 and p not in shown]
+        ids = getattr(s, "shown_ids", None)
+        if ids is None:                                    # older SearchCall objects without shown_ids
+            scores = dict(s.ranked[:len(s.top_k_ids)])
+            ids = [p for p in s.top_k_ids if scores.get(p, 0) > 0]
+        shown += [p for p in ids if p not in shown]
     return shown
 
 

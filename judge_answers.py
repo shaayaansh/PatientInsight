@@ -103,7 +103,9 @@ def score(items: List[Dict[str, Any]], verdicts: Dict[str, bool]) -> Dict[str, A
 def judge_one(rec: Dict[str, Any], rubric: List[Dict[str, Any]], instructions: str, model: str,
               effort: str, usage: Usage, notes_lock: threading.Lock, notes: Dict[int, str]) -> Dict[str, Any]:
     query, answer = rec["query"], rec.get("answer") or ""
-    shown = set(int(p) for p in rec.get("top_k_patient_ids", []))
+    # the notes the agent actually read: after verification if the run used it, else the top-k
+    shown_list = rec.get("shown_patient_ids")
+    shown = set(int(p) for p in (shown_list if shown_list is not None else rec.get("top_k_patient_ids", [])))
     cited = parse_citations(answer)
     real, fabricated = sorted(cited & shown), sorted(cited - shown)
     base = {"query": query, "gold_patient_id": rec.get("gold_patient_id"), "status": rec.get("status"),
